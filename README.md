@@ -1,68 +1,114 @@
+# RAG-Powered Financial News Research Assistant
 
-# RockyBot: News Research Tool 
+A Streamlit research tool for **equity and financial-news analysis**. Paste up to three article URLs, and the app scrapes them, builds a **FAISS** vector index with **OpenAI embeddings**, and answers your questions with a **source-cited** answer — so you can see exactly which article each claim came from.
 
-RockyBot is a user-friendly news research tool designed for effortless information retrieval. Users can input article URLs and ask questions to receive relevant insights from the stock market and financial domain.
+![App screenshot](rockybot.jpg)
 
-![](rockybot.jpg)
+---
 
 ## Features
 
-- Load URLs or upload text files containing URLs to fetch article content.
-- Process article content through LangChain's UnstructuredURL Loader
-- Construct an embedding vector using OpenAI's embeddings and leverage FAISS, a powerful similarity search library, to enable swift and effective retrieval of relevant information
-- Interact with the LLM's (Chatgpt) by inputting queries and receiving answers along with source URLs.
+- **URL ingestion** — loads full article content from up to 3 news URLs with LangChain's `UnstructuredURLLoader`.
+- **Structure-aware chunking** — `RecursiveCharacterTextSplitter` (1,000-char chunks) splits on paragraphs → lines → sentences → clauses (`\n\n`, `\n`, `.`, `,`), keeping related sentences together.
+- **Semantic index** — chunks embedded with OpenAI embeddings and stored in a **FAISS** index, persisted to disk so you can keep asking questions without re-processing.
+- **Answers with citations** — LangChain `RetrievalQAWithSourcesChain` retrieves the most relevant chunks and returns `{answer, sources}`; sources are listed under every answer.
+- **Simple UI** — Streamlit sidebar for URLs, live progress messages (loading → splitting → embedding), and a question box.
 
+---
 
-## Installation
+## Architecture
 
-1.Clone this repository to your local machine using:
+```mermaid
+flowchart LR
+    subgraph Indexing [Indexing - Process URLs]
+        U[News article URLs x3] --> L[UnstructuredURLLoader]
+        L --> S[RecursiveCharacterTextSplitter<br/>chunk_size=1000]
+        S --> E[OpenAI Embeddings]
+        E --> F[(FAISS index<br/>faiss_store_openai.pkl)]
+    end
+
+    subgraph QA [Question answering]
+        Q[User question] --> R[FAISS retriever]
+        F --> R
+        R --> C[RetrievalQAWithSourcesChain<br/>OpenAI LLM, temp 0.9, 500 tokens]
+        C --> A[Answer + source URLs]
+    end
+```
+
+---
+
+## Project structure
+
+```
+RAG-Powered-Financial-News-Research-Assistant/
+├── main.py                 # Streamlit app: ingestion, indexing and Q&A
+├── requirements.txt        # pinned dependencies
+├── faiss_store_openai.pkl  # sample persisted FAISS index
+├── rockybot.jpg            # screenshot
+└── .env                    # OPENAI_API_KEY (not for real keys — see Security)
+```
+
+---
+
+## Tech stack
+
+| Concern | Tool |
+|---|---|
+| UI | Streamlit |
+| Orchestration | LangChain (`UnstructuredURLLoader`, `RecursiveCharacterTextSplitter`, `RetrievalQAWithSourcesChain`) |
+| Embeddings & LLM | OpenAI |
+| Vector store | FAISS (CPU) |
+| Config | python-dotenv |
+
+---
+
+## Getting started
 
 ```bash
-  git clone https://github.com/codebasics/langchain.git
+git clone https://github.com/Amg1703/RAG-Powered-Financial-News-Research-Assistant.git
+cd RAG-Powered-Financial-News-Research-Assistant
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
-2.Navigate to the project directory:
 
-```bash
-  cd 2_news_research_tool_project
+Create `.env`:
+
+```env
+OPENAI_API_KEY=sk-...
 ```
-3. Install the required dependencies using pip:
 
-```bash
-  pip install -r requirements.txt
-```
-4.Set up your OpenAI API key by creating a .env file in the project root and adding your API
+Run:
 
-```bash
-  OPENAI_API_KEY=your_api_key_here
-```
-## Usage/Examples
-
-1. Run the Streamlit app by executing:
 ```bash
 streamlit run main.py
-
 ```
 
-2.The web app will open in your browser.
+1. Paste up to three article URLs in the sidebar (e.g. stock-market news).
+2. Click **Process URLs** and wait for the index to build.
+3. Ask a question, e.g. *“What was the company's quarterly revenue?”* — the answer appears with its source URLs.
 
-- On the sidebar, you can input URLs directly.
+---
 
-- Initiate the data loading and processing by clicking "Process URLs."
+## Notes & limitations
 
-- Observe the system as it performs text splitting, generates embedding vectors, and efficiently indexes them using FAISS.
+- Dependencies are pinned to the 2023 LangChain (`0.0.284`) and OpenAI (`0.28`) APIs. Newer versions moved these imports to `langchain-community` / `langchain-openai`; migrating is on the roadmap.
+- The FAISS index is pickled to disk. Only load pickles you created yourself.
+- **Security:** never commit a real API key. Keep `.env` in `.gitignore` and rotate any key that has been pushed.
 
-- The embeddings will be stored and indexed using FAISS, enhancing retrieval speed.
+## Roadmap
 
-- The FAISS index will be saved in a local file path in pickle format for future use.
-- One can now ask a question and get the answer based on those news articles
-- In video tutorial, we used following news articles
-  - https://www.moneycontrol.com/news/business/tata-motors-mahindra-gain-certificates-for-production-linked-payouts-11281691.html
-  - https://www.moneycontrol.com/news/business/tata-motors-launches-punch-icng-price-starts-at-rs-7-1-lakh-11098751.html
-  - https://www.moneycontrol.com/news/business/stocks/buy-tata-motors-target-of-rs-743-kr-choksey-11080811.html
+- [ ] Migrate to current LangChain packages and OpenAI chat models
+- [ ] Use `FAISS.save_local` / `load_local` instead of pickle
+- [ ] Support any number of URLs and PDF uploads
+- [ ] Lower temperature for factual Q&A; stream answers
+- [ ] Hybrid (BM25 + vector) retrieval and re-ranking
 
-## Project Structure
+---
 
-- main.py: The main Streamlit application script.
-- requirements.txt: A list of required Python packages for the project.
-- faiss_store_openai.pkl: A pickle file to store the FAISS index.
-- .env: Configuration file for storing your OpenAI API key.
+## Acknowledgements
+
+Built while following the [Codebasics](https://codebasics.io) LangChain project series (“News Research Tool”), then extended and documented here.
+
+## Author
+
+**Arjun Mageswaran** — AI/LLM Engineer · [GitHub](https://github.com/Amg1703) · [LinkedIn](https://www.linkedin.com/in/arjun-mageswaran-a5b694362)
